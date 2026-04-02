@@ -126,10 +126,15 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf target/ear-content
-          mkdir -p target/ear-content/META-INF
+          mkdir -p target/ear-content/META-INF target/ear-content/lib
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
           cp dist/singular-user-storage-provider.jar target/ear-content/
-          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
-          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          classpath=$(find target/ear-content/lib -maxdepth 1 -type f -name '*.jar' -exec basename {} \; | sort | sed 's#^#lib/#' | tr '\n' ' ')
+          printf 'Manifest-Version: 1.0\n' > target/ear-manifest.mf
+          printf 'Class-Path: %s\n' "$classpath" | fold -s -w 70 | awk 'NR==1{print;next}{print " " $0}' >> target/ear-manifest.mf
+          printf '\n' >> target/ear-manifest.mf
+          jar ufm target/ear-content/singular-user-storage-provider.jar target/ear-manifest.mf
           cat > target/ear-content/META-INF/application.xml <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
@@ -137,6 +142,7 @@ jobs:
                        xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
                        version="7">
             <display-name>singular-user-storage-provider</display-name>
+            <library-directory>lib</library-directory>
             <module>
               <java>singular-user-storage-provider.jar</java>
             </module>
@@ -192,10 +198,15 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf target/ear-content
-          mkdir -p target/ear-content/META-INF
+          mkdir -p target/ear-content/META-INF target/ear-content/lib
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
           cp dist/singular-user-storage-provider.jar target/ear-content/
-          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
-          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          classpath=$(find target/ear-content/lib -maxdepth 1 -type f -name '*.jar' -exec basename {} \; | sort | sed 's#^#lib/#' | tr '\n' ' ')
+          printf 'Manifest-Version: 1.0\n' > target/ear-manifest.mf
+          printf 'Class-Path: %s\n' "$classpath" | fold -s -w 70 | awk 'NR==1{print;next}{print " " $0}' >> target/ear-manifest.mf
+          printf '\n' >> target/ear-manifest.mf
+          jar ufm target/ear-content/singular-user-storage-provider.jar target/ear-manifest.mf
           cat > target/ear-content/META-INF/application.xml <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
@@ -203,6 +214,7 @@ jobs:
                        xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
                        version="7">
             <display-name>singular-user-storage-provider</display-name>
+            <library-directory>lib</library-directory>
             <module>
               <java>singular-user-storage-provider.jar</java>
             </module>
