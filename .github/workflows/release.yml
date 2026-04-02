@@ -113,7 +113,7 @@ jobs:
       - name: Upload EAR test artifact
         uses: actions/upload-artifact@v4
         with:
-          name: singular-user-storage-provider-ear-${{ github.ref_name }}
+          name: singular-user-storage-provider-ear-${{ github.sha }}
           path: dist/singular-user-storage-provider.ear
           if-no-files-found: error
 
