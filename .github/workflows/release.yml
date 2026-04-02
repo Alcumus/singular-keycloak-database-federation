@@ -119,35 +119,46 @@ jobs:
           mvn -B dependency:copy-dependencies \
             -DincludeScope=provided \
             -Dmdep.prependGroupId=true \
-            -DexcludeArtifactIds=keycloak-core,keycloak-server-spi,jboss-logging,lombok,auto-service \
+            -DincludeArtifactIds=hibernate-core,jboss-logging,javax.persistence-api,javassist,byte-buddy,antlr,jboss-transaction-api_1.2_spec,jandex,classmate,javax.activation-api,dom4j,hibernate-commons-annotations,jaxb-api,jaxb-runtime,txw2,istack-commons-runtime,stax-ex,FastInfoset,slf4j-api \
             -DoutputDirectory=target/ear-provided
 
       - name: Create EAR bundle
         run: |
           set -euo pipefail
           rm -rf target/ear-content
-          mkdir -p target/ear-content/META-INF target/ear-content/lib
-          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
-          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
-          cp dist/singular-user-storage-provider.jar target/ear-content/
-          classpath=$(find target/ear-content/lib -maxdepth 1 -type f -name '*.jar' -exec basename {} \; | sort | sed 's#^#lib/#' | tr '\n' ' ')
-          printf 'Manifest-Version: 1.0\n' > target/ear-manifest.mf
-          printf 'Class-Path: %s\n' "$classpath" | fold -s -w 70 | awk 'NR==1{print;next}{print " " $0}' >> target/ear-manifest.mf
-          printf '\n' >> target/ear-manifest.mf
-          jar ufm target/ear-content/singular-user-storage-provider.jar target/ear-manifest.mf
+          mkdir -p target/ear-content/META-INF
+          version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version | tail -n 1)
+          module_jar="org.opensingular-singular-user-storage-provider-module-${version}.jar"
+          cp dist/singular-user-storage-provider.jar "target/ear-content/${module_jar}"
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
           cat > target/ear-content/META-INF/application.xml <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                        xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
                        version="7">
-            <display-name>singular-user-storage-provider</display-name>
-            <library-directory>lib</library-directory>
-            <module>
-              <java>singular-user-storage-provider.jar</java>
-            </module>
-          </application>
+            <display-name>singular-user-storage-provider-bundle</display-name>
           EOF
+          {
+            printf '  <module>\n'
+            printf '    <java>%s</java>\n' "$module_jar"
+            printf '  </module>\n'
+            find target/ear-content -maxdepth 1 -type f -name '*.jar' ! -name "$module_jar" -exec basename {} \; | sort | while IFS= read -r jar_name; do
+              printf '  <module>\n'
+              printf '    <java>%s</java>\n' "$jar_name"
+              printf '  </module>\n'
+            done
+            printf '</application>\n'
+          } >> target/ear-content/META-INF/application.xml
+          printf 'Manifest-Version: 1.0\nCreated-By: GitHub Actions\n\n' > target/ear-content/META-INF/MANIFEST.MF
+          mkdir -p target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle
+          cp pom.xml target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.xml
+          {
+            printf 'groupId=org.opensingular\n'
+            printf 'artifactId=singular-user-storage-provider-bundle\n'
+            printf 'version=%s\n' "$version"
+          } > target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.properties
           rm -f dist/singular-user-storage-provider.ear
           cd target/ear-content
           zip -r ../../dist/singular-user-storage-provider.ear .
@@ -191,35 +202,46 @@ jobs:
           mvn -B dependency:copy-dependencies \
             -DincludeScope=provided \
             -Dmdep.prependGroupId=true \
-            -DexcludeArtifactIds=keycloak-core,keycloak-server-spi,jboss-logging,lombok,auto-service \
+            -DincludeArtifactIds=hibernate-core,jboss-logging,javax.persistence-api,javassist,byte-buddy,antlr,jboss-transaction-api_1.2_spec,jandex,classmate,javax.activation-api,dom4j,hibernate-commons-annotations,jaxb-api,jaxb-runtime,txw2,istack-commons-runtime,stax-ex,FastInfoset,slf4j-api \
             -DoutputDirectory=target/ear-provided
 
       - name: Create EAR bundle
         run: |
           set -euo pipefail
           rm -rf target/ear-content
-          mkdir -p target/ear-content/META-INF target/ear-content/lib
-          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
-          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
-          cp dist/singular-user-storage-provider.jar target/ear-content/
-          classpath=$(find target/ear-content/lib -maxdepth 1 -type f -name '*.jar' -exec basename {} \; | sort | sed 's#^#lib/#' | tr '\n' ' ')
-          printf 'Manifest-Version: 1.0\n' > target/ear-manifest.mf
-          printf 'Class-Path: %s\n' "$classpath" | fold -s -w 70 | awk 'NR==1{print;next}{print " " $0}' >> target/ear-manifest.mf
-          printf '\n' >> target/ear-manifest.mf
-          jar ufm target/ear-content/singular-user-storage-provider.jar target/ear-manifest.mf
+          mkdir -p target/ear-content/META-INF
+          version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version | tail -n 1)
+          module_jar="org.opensingular-singular-user-storage-provider-module-${version}.jar"
+          cp dist/singular-user-storage-provider.jar "target/ear-content/${module_jar}"
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
           cat > target/ear-content/META-INF/application.xml <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                        xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
                        version="7">
-            <display-name>singular-user-storage-provider</display-name>
-            <library-directory>lib</library-directory>
-            <module>
-              <java>singular-user-storage-provider.jar</java>
-            </module>
-          </application>
+            <display-name>singular-user-storage-provider-bundle</display-name>
           EOF
+          {
+            printf '  <module>\n'
+            printf '    <java>%s</java>\n' "$module_jar"
+            printf '  </module>\n'
+            find target/ear-content -maxdepth 1 -type f -name '*.jar' ! -name "$module_jar" -exec basename {} \; | sort | while IFS= read -r jar_name; do
+              printf '  <module>\n'
+              printf '    <java>%s</java>\n' "$jar_name"
+              printf '  </module>\n'
+            done
+            printf '</application>\n'
+          } >> target/ear-content/META-INF/application.xml
+          printf 'Manifest-Version: 1.0\nCreated-By: GitHub Actions\n\n' > target/ear-content/META-INF/MANIFEST.MF
+          mkdir -p target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle
+          cp pom.xml target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.xml
+          {
+            printf 'groupId=org.opensingular\n'
+            printf 'artifactId=singular-user-storage-provider-bundle\n'
+            printf 'version=%s\n' "$version"
+          } > target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.properties
           rm -f dist/singular-user-storage-provider.ear
           cd target/ear-content
           zip -r ../../dist/singular-user-storage-provider.ear .
