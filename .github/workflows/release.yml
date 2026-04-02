@@ -107,13 +107,36 @@ jobs:
       - name: Build release artifacts
         run: mvn -B clean package
 
+      - name: Create EAR bundle
+        run: |
+          set -euo pipefail
+          rm -rf target/ear-content
+          mkdir -p target/ear-content/META-INF target/ear-content/lib
+          cp dist/singular-user-storage-provider.jar target/ear-content/
+          find dist -maxdepth 1 -type f -name '*.jar' ! -name 'singular-user-storage-provider.jar' -exec cp {} target/ear-content/lib/ \;
+          cat > target/ear-content/META-INF/application.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+                       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
+                       version="7">
+            <display-name>singular-user-storage-provider</display-name>
+            <module>
+              <java>singular-user-storage-provider.jar</java>
+            </module>
+          </application>
+          EOF
+          rm -f dist/singular-user-storage-provider.ear
+          cd target/ear-content
+          zip -r ../../dist/singular-user-storage-provider.ear .
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.new_tag }}
           generate_release_notes: true
           files: |
-            dist/singular-user-storage-provider.jar
+            dist/singular-user-storage-provider.ear
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -134,9 +157,32 @@ jobs:
       - name: Build release artifacts
         run: mvn -B clean package
 
+      - name: Create EAR bundle
+        run: |
+          set -euo pipefail
+          rm -rf target/ear-content
+          mkdir -p target/ear-content/META-INF target/ear-content/lib
+          cp dist/singular-user-storage-provider.jar target/ear-content/
+          find dist -maxdepth 1 -type f -name '*.jar' ! -name 'singular-user-storage-provider.jar' -exec cp {} target/ear-content/lib/ \;
+          cat > target/ear-content/META-INF/application.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+                       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
+                       version="7">
+            <display-name>singular-user-storage-provider</display-name>
+            <module>
+              <java>singular-user-storage-provider.jar</java>
+            </module>
+          </application>
+          EOF
+          rm -f dist/singular-user-storage-provider.ear
+          cd target/ear-content
+          zip -r ../../dist/singular-user-storage-provider.ear .
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/singular-user-storage-provider.jar
+            dist/singular-user-storage-provider.ear
