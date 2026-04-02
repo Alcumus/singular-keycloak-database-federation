@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           rm -rf target/ear-lib
           mvn -B dependency:copy-dependencies \
-            -DexcludeScope=test \
+            -DincludeScope=runtime \
             -DoutputDirectory=target/ear-lib
 
       - name: Create EAR bundle
@@ -170,7 +170,7 @@ jobs:
           set -euo pipefail
           rm -rf target/ear-lib
           mvn -B dependency:copy-dependencies \
-            -DexcludeScope=test \
+            -DincludeScope=runtime \
             -DoutputDirectory=target/ear-lib
 
       - name: Create EAR bundle
