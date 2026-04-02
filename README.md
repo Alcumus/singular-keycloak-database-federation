@@ -34,6 +34,14 @@ This option can be configured by the following switch:
 
 ![Sample Screenshot](deleteuser.png)
 
+## Multi-realm usage
+
+Use one User Federation provider instance per realm. Each realm should keep its own provider configuration, including JDBC URL, credentials, and SQL queries.
+
+If multiple realms are backed by different databases or schemas, configure each realm with its own provider instance that points directly to that realm's data source. The plugin does not inject the Keycloak realm into your SQL queries automatically.
+
+If you need multiple realms to share the same physical database, the configured SQL queries must enforce the right realm or tenant boundary themselves.
+
 ## Limitations
 
     - Do not allow user information update, including password update
@@ -49,6 +57,20 @@ Just add a mapper to client mappers with the same name as the returned column al
 ## Build
 
     - mvn clean package
+
+## CI/CD release
+
+The repository includes a GitHub Actions workflow in `.github/workflows/release.yml`.
+
+- Pushes to `main` and pull requests run a Maven build and upload the `dist` artifacts as a workflow artifact.
+- Pushes to `main` also create and push the next Git tag automatically using the Maven version from `pom.xml` as the `major.minor` base and incrementing the patch number.
+- Pushing a tag named like `v2.3.1`, including tags created by the workflow, runs the release build and creates a GitHub release.
+- The GitHub release uploads `dist/singular-user-storage-provider.ear`, which contains `singular-user-storage-provider.jar` at the EAR root, dependency JARs under `lib/`, and `META-INF/application.xml` configured with `library-directory` set to `lib`.
+
+Example release command:
+
+    git tag v2.3.1
+    git push origin v2.3.1
 
 ## Deployment
 

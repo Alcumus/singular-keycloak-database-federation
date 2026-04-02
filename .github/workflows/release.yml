@@ -1,0 +1,329 @@
+name: Release Pipeline
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Build plugin
+        run: mvn -B clean package
+
+      - name: Archive release bundle
+        run: zip -r singular-user-storage-provider-${{ github.sha }}-dist.zip dist
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: singular-user-storage-provider-dist
+          path: |
+            dist/*.jar
+            singular-user-storage-provider-${{ github.sha }}-dist.zip
+          if-no-files-found: error
+
+  branch_ear_artifact:
+    if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Build EAR test artifact
+        run: |
+          set -euo pipefail
+          mvn -B clean package
+          rm -rf target/ear-runtime target/ear-provided target/ear-content
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=runtime \
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=lombok,auto-service \
+            -DoutputDirectory=target/ear-runtime
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=provided \
+            -Dmdep.prependGroupId=true \
+            -DincludeArtifactIds=hibernate-core,jboss-logging,javax.persistence-api,javassist,byte-buddy,antlr,jboss-transaction-api_1.2_spec,jandex,classmate,javax.activation-api,dom4j,hibernate-commons-annotations,jaxb-api,jaxb-runtime,txw2,istack-commons-runtime,stax-ex,FastInfoset,slf4j-api \
+            -DoutputDirectory=target/ear-provided
+          mkdir -p target/ear-content/META-INF
+          version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version | tail -n 1)
+          module_jar="org.opensingular-singular-user-storage-provider-module-${version}.jar"
+          cp dist/singular-user-storage-provider.jar "target/ear-content/${module_jar}"
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          cat > target/ear-content/META-INF/application.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+                       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
+                       version="7">
+            <display-name>singular-user-storage-provider-bundle</display-name>
+          EOF
+          {
+            printf '  <module>\n'
+            printf '    <java>%s</java>\n' "$module_jar"
+            printf '  </module>\n'
+            find target/ear-content -maxdepth 1 -type f -name '*.jar' ! -name "$module_jar" -exec basename {} \; | sort | while IFS= read -r jar_name; do
+              printf '  <module>\n'
+              printf '    <java>%s</java>\n' "$jar_name"
+              printf '  </module>\n'
+            done
+            printf '</application>\n'
+          } >> target/ear-content/META-INF/application.xml
+          printf 'Manifest-Version: 1.0\nCreated-By: GitHub Actions\n\n' > target/ear-content/META-INF/MANIFEST.MF
+          mkdir -p target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle
+          cp pom.xml target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.xml
+          {
+            printf 'groupId=org.opensingular\n'
+            printf 'artifactId=singular-user-storage-provider-bundle\n'
+            printf 'version=%s\n' "$version"
+          } > target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.properties
+          rm -f dist/singular-user-storage-provider.ear
+          cd target/ear-content
+          zip -r ../../dist/singular-user-storage-provider.ear .
+
+      - name: Upload EAR test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: singular-user-storage-provider-ear-${{ github.sha }}
+          path: dist/singular-user-storage-provider.ear
+          if-no-files-found: error
+
+  tag:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.create_tag.outputs.new_tag }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Create next version tag
+        id: create_tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          version_base=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version | tail -n 1)
+          latest_matching_tag=$(git tag --list "v${version_base}.*" --sort=version:refname | tail -n 1)
+
+          if [ -z "$latest_matching_tag" ]; then
+            new_tag="v${version_base}.0"
+          else
+            current_patch=${latest_matching_tag##*.}
+            next_patch=$((current_patch + 1))
+            new_tag="v${version_base}.${next_patch}"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$new_tag" -m "Release $new_tag"
+          git push origin "$new_tag"
+          echo "new_tag=$new_tag" >> "$GITHUB_OUTPUT"
+
+  release_from_main:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, tag]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Build release artifacts
+        run: mvn -B clean package
+
+      - name: Copy EAR dependencies
+        run: |
+          set -euo pipefail
+          rm -rf target/ear-runtime target/ear-provided
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=runtime \
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=lombok,auto-service \
+            -DoutputDirectory=target/ear-runtime
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=provided \
+            -Dmdep.prependGroupId=true \
+            -DincludeArtifactIds=hibernate-core,jboss-logging,javax.persistence-api,javassist,byte-buddy,antlr,jboss-transaction-api_1.2_spec,jandex,classmate,javax.activation-api,dom4j,hibernate-commons-annotations,jaxb-api,jaxb-runtime,txw2,istack-commons-runtime,stax-ex,FastInfoset,slf4j-api \
+            -DoutputDirectory=target/ear-provided
+
+      - name: Create EAR bundle
+        run: |
+          set -euo pipefail
+          rm -rf target/ear-content
+          mkdir -p target/ear-content/META-INF
+          version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version | tail -n 1)
+          module_jar="org.opensingular-singular-user-storage-provider-module-${version}.jar"
+          cp dist/singular-user-storage-provider.jar "target/ear-content/${module_jar}"
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          cat > target/ear-content/META-INF/application.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+                       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
+                       version="7">
+            <display-name>singular-user-storage-provider-bundle</display-name>
+          EOF
+          {
+            printf '  <module>\n'
+            printf '    <java>%s</java>\n' "$module_jar"
+            printf '  </module>\n'
+            find target/ear-content -maxdepth 1 -type f -name '*.jar' ! -name "$module_jar" -exec basename {} \; | sort | while IFS= read -r jar_name; do
+              printf '  <module>\n'
+              printf '    <java>%s</java>\n' "$jar_name"
+              printf '  </module>\n'
+            done
+            printf '</application>\n'
+          } >> target/ear-content/META-INF/application.xml
+          printf 'Manifest-Version: 1.0\nCreated-By: GitHub Actions\n\n' > target/ear-content/META-INF/MANIFEST.MF
+          mkdir -p target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle
+          cp pom.xml target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.xml
+          {
+            printf 'groupId=org.opensingular\n'
+            printf 'artifactId=singular-user-storage-provider-bundle\n'
+            printf 'version=%s\n' "$version"
+          } > target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.properties
+          rm -f dist/singular-user-storage-provider.ear
+          cd target/ear-content
+          zip -r ../../dist/singular-user-storage-provider.ear .
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.new_tag }}
+          generate_release_notes: true
+          files: |
+            dist/singular-user-storage-provider.ear
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Build release artifacts
+        run: mvn -B clean package
+
+      - name: Copy EAR dependencies
+        run: |
+          set -euo pipefail
+          rm -rf target/ear-runtime target/ear-provided
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=runtime \
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=lombok,auto-service \
+            -DoutputDirectory=target/ear-runtime
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=provided \
+            -Dmdep.prependGroupId=true \
+            -DincludeArtifactIds=hibernate-core,jboss-logging,javax.persistence-api,javassist,byte-buddy,antlr,jboss-transaction-api_1.2_spec,jandex,classmate,javax.activation-api,dom4j,hibernate-commons-annotations,jaxb-api,jaxb-runtime,txw2,istack-commons-runtime,stax-ex,FastInfoset,slf4j-api \
+            -DoutputDirectory=target/ear-provided
+
+      - name: Create EAR bundle
+        run: |
+          set -euo pipefail
+          rm -rf target/ear-content
+          mkdir -p target/ear-content/META-INF
+          version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version | tail -n 1)
+          module_jar="org.opensingular-singular-user-storage-provider-module-${version}.jar"
+          cp dist/singular-user-storage-provider.jar "target/ear-content/${module_jar}"
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          cat > target/ear-content/META-INF/application.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+                       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                       xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/application_7.xsd"
+                       version="7">
+            <display-name>singular-user-storage-provider-bundle</display-name>
+          EOF
+          {
+            printf '  <module>\n'
+            printf '    <java>%s</java>\n' "$module_jar"
+            printf '  </module>\n'
+            find target/ear-content -maxdepth 1 -type f -name '*.jar' ! -name "$module_jar" -exec basename {} \; | sort | while IFS= read -r jar_name; do
+              printf '  <module>\n'
+              printf '    <java>%s</java>\n' "$jar_name"
+              printf '  </module>\n'
+            done
+            printf '</application>\n'
+          } >> target/ear-content/META-INF/application.xml
+          printf 'Manifest-Version: 1.0\nCreated-By: GitHub Actions\n\n' > target/ear-content/META-INF/MANIFEST.MF
+          mkdir -p target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle
+          cp pom.xml target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.xml
+          {
+            printf 'groupId=org.opensingular\n'
+            printf 'artifactId=singular-user-storage-provider-bundle\n'
+            printf 'version=%s\n' "$version"
+          } > target/ear-content/META-INF/maven/org.opensingular/singular-user-storage-provider-bundle/pom.properties
+          rm -f dist/singular-user-storage-provider.ear
+          cd target/ear-content
+          zip -r ../../dist/singular-user-storage-provider.ear .
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/singular-user-storage-provider.ear
