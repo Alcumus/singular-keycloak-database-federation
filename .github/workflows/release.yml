@@ -110,18 +110,26 @@ jobs:
       - name: Copy EAR dependencies
         run: |
           set -euo pipefail
-          rm -rf target/ear-lib
+          rm -rf target/ear-runtime target/ear-provided
           mvn -B dependency:copy-dependencies \
             -DincludeScope=runtime \
-            -DoutputDirectory=target/ear-lib
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=lombok,auto-service \
+            -DoutputDirectory=target/ear-runtime
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=provided \
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=keycloak-core,keycloak-server-spi,jboss-logging,lombok,auto-service \
+            -DoutputDirectory=target/ear-provided
 
       - name: Create EAR bundle
         run: |
           set -euo pipefail
           rm -rf target/ear-content
-          mkdir -p target/ear-content/META-INF target/ear-content/lib
+          mkdir -p target/ear-content/META-INF
           cp dist/singular-user-storage-provider.jar target/ear-content/
-          find target/ear-lib -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
           cat > target/ear-content/META-INF/application.xml <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
@@ -168,18 +176,26 @@ jobs:
       - name: Copy EAR dependencies
         run: |
           set -euo pipefail
-          rm -rf target/ear-lib
+          rm -rf target/ear-runtime target/ear-provided
           mvn -B dependency:copy-dependencies \
             -DincludeScope=runtime \
-            -DoutputDirectory=target/ear-lib
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=lombok,auto-service \
+            -DoutputDirectory=target/ear-runtime
+          mvn -B dependency:copy-dependencies \
+            -DincludeScope=provided \
+            -Dmdep.prependGroupId=true \
+            -DexcludeArtifactIds=keycloak-core,keycloak-server-spi,jboss-logging,lombok,auto-service \
+            -DoutputDirectory=target/ear-provided
 
       - name: Create EAR bundle
         run: |
           set -euo pipefail
           rm -rf target/ear-content
-          mkdir -p target/ear-content/META-INF target/ear-content/lib
+          mkdir -p target/ear-content/META-INF
           cp dist/singular-user-storage-provider.jar target/ear-content/
-          find target/ear-lib -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/lib/ \;
+          find target/ear-runtime -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
+          find target/ear-provided -maxdepth 1 -type f -name '*.jar' -exec cp {} target/ear-content/ \;
           cat > target/ear-content/META-INF/application.xml <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <application xmlns="http://xmlns.jcp.org/xml/ns/javaee"
