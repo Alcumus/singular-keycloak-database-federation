@@ -14,9 +14,10 @@ import org.opensingular.dbuserprovider.model.QueryConfigurations;
 import org.opensingular.dbuserprovider.persistence.DataSourceProvider;
 import org.opensingular.dbuserprovider.persistence.RDBMS;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @JBossLog
 @AutoService(UserStorageProviderFactory.class)
@@ -31,7 +32,7 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
     private static final String PARAMETER_HELP             = " The %s is passed as query parameter.";
     
     
-    private Map<String, ProviderConfig> providerConfigPerInstance = new HashMap<>();
+    private final ConcurrentMap<String, ProviderConfig> providerConfigPerInstance = new ConcurrentHashMap<>();
     
     @Override
     public void init(Config.Scope config) {
@@ -39,38 +40,59 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
     
     @Override
     public void close() {
-        for (Map.Entry<String, ProviderConfig> pc : providerConfigPerInstance.entrySet()) {
-            pc.getValue().dataSourceProvider.close();
+        List<ProviderConfig> providerConfigs = new ArrayList<>(providerConfigPerInstance.values());
+        providerConfigPerInstance.clear();
+        for (ProviderConfig providerConfig : providerConfigs) {
+            providerConfig.retire();
         }
     }
     
     @Override
     public DBUserStorageProvider create(KeycloakSession session, ComponentModel model) {
-        ProviderConfig providerConfig = providerConfigPerInstance.computeIfAbsent(model.getId(), s -> configure(model));
-        return new DBUserStorageProvider(session, model, providerConfig.dataSourceProvider, providerConfig.queryConfigurations);
+        ProviderConfig providerConfig = acquireProviderConfig(model);
+        try {
+            return new DBUserStorageProvider(session, model, providerConfig.dataSourceProvider, providerConfig.queryConfigurations, providerConfig::release);
+        } catch (RuntimeException e) {
+            providerConfig.release();
+            throw e;
+        }
     }
     
-    private synchronized ProviderConfig configure(ComponentModel model) {
+    private ProviderConfig acquireProviderConfig(ComponentModel model) {
+        while (true) {
+            ProviderConfig providerConfig = providerConfigPerInstance.computeIfAbsent(model.getId(), s -> configure(model));
+            if (providerConfig.tryRetain()) {
+                return providerConfig;
+            }
+        }
+    }
+
+    protected ProviderConfig configure(ComponentModel model) {
         log.infov("Creating configuration for model: id={0} name={1}", model.getId(), model.getName());
-        ProviderConfig providerConfig = new ProviderConfig();
-        String         user           = model.get("user");
-        String         password       = model.get("password");
-        String         url            = model.get("url");
-        RDBMS          rdbms          = RDBMS.getByDescription(model.get("rdbms"));
-        providerConfig.dataSourceProvider.configure(url, rdbms, user, password, model.getName());
-        providerConfig.queryConfigurations = new QueryConfigurations(
-                model.get("count"),
-                model.get("listAll"),
-                model.get("findById"),
-                model.get("findByUsername"),
-                model.get("findBySearchTerm"),
-                model.get("findPasswordHash"),
-                model.get("hashFunction"),
-                rdbms,
-                model.get("allowKeycloakDelete", false),
-                model.get("allowDatabaseToOverwriteKeycloak", false)
-        );
-        return providerConfig;
+        DataSourceProvider dataSourceProvider = new DataSourceProvider();
+        try {
+            String user = model.get("user");
+            String password = model.get("password");
+            String url = model.get("url");
+            RDBMS rdbms = RDBMS.getByDescription(model.get("rdbms"));
+            dataSourceProvider.configure(url, rdbms, user, password, model.getName());
+            QueryConfigurations queryConfigurations = new QueryConfigurations(
+                    model.get("count"),
+                    model.get("listAll"),
+                    model.get("findById"),
+                    model.get("findByUsername"),
+                    model.get("findBySearchTerm"),
+                    model.get("findPasswordHash"),
+                    model.get("hashFunction"),
+                    rdbms,
+                    model.get("allowKeycloakDelete", false),
+                    model.get("allowDatabaseToOverwriteKeycloak", false)
+            );
+            return new ProviderConfig(dataSourceProvider, queryConfigurations);
+        } catch (RuntimeException e) {
+            dataSourceProvider.close();
+            throw e;
+        }
     }
     
     @Override
@@ -78,7 +100,7 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
         try {
             ProviderConfig old = providerConfigPerInstance.put(model.getId(), configure(model));
             if (old != null) {
-                old.dataSourceProvider.close();
+                old.retire();
             }
         } catch (Exception e) {
             throw new ComponentValidationException(e.getMessage(), e);
@@ -223,9 +245,44 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
                                            .build();
     }
     
-    private static class ProviderConfig {
-        private DataSourceProvider  dataSourceProvider = new DataSourceProvider();
-        private QueryConfigurations queryConfigurations;
+    protected static class ProviderConfig {
+        private final DataSourceProvider  dataSourceProvider;
+        private final QueryConfigurations queryConfigurations;
+        private       boolean             retired;
+        private       boolean             closed;
+        private       int                 activeInstances;
+
+        ProviderConfig(DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations) {
+            this.dataSourceProvider = dataSourceProvider;
+            this.queryConfigurations = queryConfigurations;
+        }
+
+        private synchronized boolean tryRetain() {
+            if (retired || closed) {
+                return false;
+            }
+            activeInstances++;
+            return true;
+        }
+
+        private synchronized void release() {
+            if (activeInstances > 0) {
+                activeInstances--;
+            }
+            closeIfPossible();
+        }
+
+        private synchronized void retire() {
+            retired = true;
+            closeIfPossible();
+        }
+
+        private void closeIfPossible() {
+            if (retired && activeInstances == 0 && !closed) {
+                closed = true;
+                dataSourceProvider.close();
+            }
+        }
     }
     
     
