@@ -170,27 +170,22 @@ public class DBUserStorageProvider implements UserStorageProvider,
         return repository.getUsersCount(null);
     }
     
-    @Override
     public int getUsersCount(RealmModel realm, Set<String> groupIds) {
         return repository.getUsersCount(null);
     }
     
-    @Override
     public int getUsersCount(RealmModel realm, String search) {
         return repository.getUsersCount(search);
     }
     
-    @Override
     public int getUsersCount(RealmModel realm, String search, Set<String> groupIds) {
         return repository.getUsersCount(search);
     }
     
-    @Override
     public int getUsersCount(RealmModel realm, Map<String, String> params) {
         return repository.getUsersCount(null);
     }
     
-    @Override
     public int getUsersCount(RealmModel realm, Map<String, String> params, Set<String> groupIds) {
         return repository.getUsersCount(null);
     }
