@@ -22,7 +22,9 @@ import org.opensingular.dbuserprovider.util.PagingUtil;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @JBossLog
@@ -33,17 +35,24 @@ public class DBUserStorageProvider implements UserStorageProvider,
     private final ComponentModel  model;
     private final UserRepository  repository;
     private final boolean allowDatabaseToOverwriteKeycloak;
+    private final Runnable        onClose;
+    private final AtomicBoolean   closed = new AtomicBoolean();
 
-    DBUserStorageProvider(KeycloakSession session, ComponentModel model, DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations) {
+    DBUserStorageProvider(KeycloakSession session, ComponentModel model, DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations, Runnable onClose) {
         this.session = session;
         this.model = model;
         this.repository = new UserRepository(dataSourceProvider, queryConfigurations);
         this.allowDatabaseToOverwriteKeycloak = queryConfigurations.getAllowDatabaseToOverwriteKeycloak();
+        this.onClose = onClose;
     }
 
 
     private List<UserModel> toUserModel(RealmModel realm, List<Map<String, String>> users) {
+        if (users == null || users.isEmpty()) {
+            return Collections.emptyList();
+        }
         return users.stream()
+                .filter(Objects::nonNull)
                 .map(m -> new UserAdapter(session, realm, model, m, allowDatabaseToOverwriteKeycloak)).collect(Collectors.toList());
     }
 
@@ -130,6 +139,9 @@ public class DBUserStorageProvider implements UserStorageProvider,
     @Override
     public void close() {
         log.debugv("closing");
+        if (closed.compareAndSet(false, true)) {
+            onClose.run();
+        }
     }
 
     @Override
