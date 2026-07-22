@@ -64,13 +64,13 @@ public class UserRepository {
     private List<Map<String, String>> readMap(ResultSet rs) {
         try {
             List<Map<String, String>> data         = new ArrayList<>();
-            Set<String>               columnsFound = new HashSet<>();
+            Set<String>               columnsFound = new LinkedHashSet<>();
             for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
                 String columnLabel = rs.getMetaData().getColumnLabel(i);
                 columnsFound.add(columnLabel);
             }
             while (rs.next()) {
-                Map<String, String> result = new HashMap<>();
+                Map<String, String> result = new LinkedHashMap<>();
                 for (String col : columnsFound) {
                     result.put(col, rs.getString(col));
                 }
