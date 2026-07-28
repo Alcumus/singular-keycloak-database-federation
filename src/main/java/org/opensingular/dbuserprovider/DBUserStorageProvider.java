@@ -5,8 +5,8 @@ import org.keycloak.component.ComponentModel;
 import org.keycloak.credential.CredentialInput;
 import org.keycloak.credential.CredentialInputUpdater;
 import org.keycloak.credential.CredentialInputValidator;
-import org.keycloak.models.*;
 import org.keycloak.models.cache.CachedUserModel;
+import org.keycloak.models.*;
 import org.keycloak.models.credential.PasswordCredentialModel;
 import org.keycloak.storage.StorageId;
 import org.keycloak.storage.UserStorageProvider;
@@ -29,18 +29,18 @@ import java.util.stream.Collectors;
 
 @JBossLog
 public class DBUserStorageProvider implements UserStorageProvider,
-        UserLookupProvider, UserQueryProvider, CredentialInputUpdater, CredentialInputValidator, UserRegistrationProvider {
+                                              UserLookupProvider, UserQueryProvider, CredentialInputUpdater, CredentialInputValidator, UserRegistrationProvider {
 
     private final KeycloakSession session;
     private final ComponentModel  model;
     private final UserRepository  repository;
     private final boolean allowDatabaseToOverwriteKeycloak;
-    private final Runnable        onClose;
-    private final AtomicBoolean   closed = new AtomicBoolean();
+    private final Runnable onClose;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     DBUserStorageProvider(KeycloakSession session, ComponentModel model, DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations, Runnable onClose) {
-        this.session = session;
-        this.model = model;
+        this.session    = session;
+        this.model      = model;
         this.repository = new UserRepository(dataSourceProvider, queryConfigurations);
         this.allowDatabaseToOverwriteKeycloak = queryConfigurations.getAllowDatabaseToOverwriteKeycloak();
         this.onClose = onClose;
@@ -52,8 +52,8 @@ public class DBUserStorageProvider implements UserStorageProvider,
             return Collections.emptyList();
         }
         return users.stream()
-                .filter(Objects::nonNull)
-                .map(m -> new UserAdapter(session, realm, model, m, allowDatabaseToOverwriteKeycloak)).collect(Collectors.toList());
+                    .filter(Objects::nonNull)
+                    .map(m -> new UserAdapter(session, realm, model, m, allowDatabaseToOverwriteKeycloak)).collect(Collectors.toList());
     }
 
 
@@ -76,17 +76,17 @@ public class DBUserStorageProvider implements UserStorageProvider,
             return false;
         }
 
-        UserCredentialModel cred = (UserCredentialModel) input;
+                UserCredentialModel cred = (UserCredentialModel) input;
 
         UserModel dbUser = user;
         // If the cache just got loaded in the last 500 millisec (i.e. probably part of the actual flow), there is no point in reloading the user.)
         if (allowDatabaseToOverwriteKeycloak && user instanceof CachedUserModel && (System.currentTimeMillis() - ((CachedUserModel) user).getCacheTimestamp()) > 500) {
           dbUser = this.getUserById(user.getId(), realm);
 
-          if (dbUser == null) {
-            ((CachedUserModel) user).invalidate();
-            return false;
-          }
+                    if (dbUser == null) {
+                        ((CachedUserModel) user).invalidate();
+                        return false;
+                    }
 
           // For now, we'll just invalidate the cache if username or email has changed. Eventually we could check all (or a parametered list of) attributes fetched from the DB.
           if (!java.util.Objects.equals(user.getUsername(), dbUser.getUsername()) || !java.util.Objects.equals(user.getEmail(), dbUser.getEmail())) {
@@ -150,14 +150,12 @@ public class DBUserStorageProvider implements UserStorageProvider,
         log.infov("lookup user by id: realm={0} userId={1}", realm.getId(), id);
 
         String externalId = StorageId.externalId(id);
-        Map<String, String> user = repository.findUserById(externalId);
-
-        if (user == null) {
+        Map<String, String> userData = repository.findUserById(externalId);
+        if (userData == null) {
             log.debugv("findUserById returned null, skipping creation of UserAdapter, expect login error");
             return null;
-        } else {
-            return new UserAdapter(session, realm, model, user, allowDatabaseToOverwriteKeycloak);
         }
+        return new UserAdapter(session, realm, model, userData, allowDatabaseToOverwriteKeycloak);
     }
 
     @Override
@@ -185,6 +183,23 @@ public class DBUserStorageProvider implements UserStorageProvider,
     public int getUsersCount(RealmModel realm, Set<String> groupIds) {
         return repository.getUsersCount(null);
     }
+    }
+
+    public int getUsersCount(RealmModel realm, String search) {
+        return repository.getUsersCount(search);
+    }
+
+    public int getUsersCount(RealmModel realm, String search, Set<String> groupIds) {
+        return repository.getUsersCount(search);
+    }
+
+    public int getUsersCount(RealmModel realm, Map<String, String> params) {
+        return repository.getUsersCount(null);
+    }
+
+    public int getUsersCount(RealmModel realm, Map<String, String> params, Set<String> groupIds) {
+        return repository.getUsersCount(null);
+    }
 
     @Override
     public int getUsersCount(RealmModel realm, boolean includeServiceAccount) {
@@ -193,9 +208,7 @@ public class DBUserStorageProvider implements UserStorageProvider,
 
     @Override
     public List<UserModel> getUsers(RealmModel realm) {
-
         log.infov("list users: realm={0}", realm.getId());
-
         return internalSearchForUser(null, realm, null);
     }
 
@@ -203,31 +216,24 @@ public class DBUserStorageProvider implements UserStorageProvider,
     public List<UserModel> getUsers(RealmModel realm, int firstResult, int maxResults) {
 
         log.infov("list users: realm={0} firstResult={1} maxResults={2}", realm.getId(), firstResult, maxResults);
-
         return internalSearchForUser(null, realm, new PagingUtil.Pageable(firstResult, maxResults));
     }
 
     @Override
     public List<UserModel> searchForUser(String search, RealmModel realm) {
-
         log.infov("search for users: realm={0} search={1}", realm.getId(), search);
-
         return internalSearchForUser(search, realm, null);
     }
 
     @Override
     public List<UserModel> searchForUser(String search, RealmModel realm, int firstResult, int maxResults) {
-
         log.infov("search for users: realm={0} search={1} firstResult={2} maxResults={3}", realm.getId(), search, firstResult, maxResults);
-
         return internalSearchForUser(search, realm, new PagingUtil.Pageable(firstResult, maxResults));
     }
 
     @Override
     public List<UserModel> searchForUser(Map<String, String> params, RealmModel realm) {
-
         log.infov("search for users with params: realm={0} params={1}", realm.getId(), params);
-
         return internalSearchForUser(params.values().stream().findFirst().orElse(null), realm, null);
     }
 
@@ -237,32 +243,25 @@ public class DBUserStorageProvider implements UserStorageProvider,
 
     @Override
     public List<UserModel> searchForUser(Map<String, String> params, RealmModel realm, int firstResult, int maxResults) {
-
         log.infov("search for users with params: realm={0} params={1} firstResult={2} maxResults={3}", realm.getId(), params, firstResult, maxResults);
         return internalSearchForUser(params.values().stream().findFirst().orElse(null), realm, new PagingUtil.Pageable(firstResult, maxResults));
     }
 
     @Override
     public List<UserModel> getGroupMembers(RealmModel realm, GroupModel group, int firstResult, int maxResults) {
-
         log.infov("search for group members with params: realm={0} groupId={1} firstResult={2} maxResults={3}", realm.getId(), group.getId(), firstResult, maxResults);
-
         return Collections.emptyList();
     }
 
     @Override
     public List<UserModel> getGroupMembers(RealmModel realm, GroupModel group) {
-
         log.infov("search for group members: realm={0} groupId={1} firstResult={2} maxResults={3}", realm.getId(), group.getId());
-
         return Collections.emptyList();
     }
 
     @Override
     public List<UserModel> searchForUserByUserAttribute(String attrName, String attrValue, RealmModel realm) {
-
         log.infov("search for group members: realm={0} attrName={1} attrValue={2}", realm.getId(), attrName, attrValue);
-
         return Collections.emptyList();
     }
 
@@ -279,7 +278,7 @@ public class DBUserStorageProvider implements UserStorageProvider,
         boolean userRemoved = repository.removeUser();
 
         if (userRemoved) {
-          log.infov("deleted keycloak user: realm={0} userId={1} username={2}", realm.getId(), user.getId(), user.getUsername());
+            log.infov("deleted keycloak user: realm={0} userId={1} username={2}", realm.getId(), user.getId(), user.getUsername());
         }
 
         return userRemoved;

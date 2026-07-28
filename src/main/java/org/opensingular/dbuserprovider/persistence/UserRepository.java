@@ -30,7 +30,7 @@ public class UserRepository {
     private QueryConfigurations queryConfigurations;
 
     public UserRepository(DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations) {
-        this.dataSourceProvider = dataSourceProvider;
+        this.dataSourceProvider  = dataSourceProvider;
         this.queryConfigurations = queryConfigurations;
     }
 
@@ -65,13 +65,13 @@ public class UserRepository {
     private List<Map<String, String>> readMap(ResultSet rs) {
         try {
             List<Map<String, String>> data         = new ArrayList<>();
-            Set<String>               columnsFound = new HashSet<>();
+            Set<String>               columnsFound = new LinkedHashSet<>();
             for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
                 String columnLabel = rs.getMetaData().getColumnLabel(i);
                 columnsFound.add(columnLabel);
             }
             while (rs.next()) {
-                Map<String, String> result = new HashMap<>();
+                Map<String, String> result = new LinkedHashMap<>();
                 for (String col : columnsFound) {
                     result.put(col, rs.getString(col));
                 }
@@ -82,6 +82,7 @@ public class UserRepository {
             throw new DBUserStorageException(e.getMessage(), e);
         }
     }
+
 
     private Integer readInt(ResultSet rs) {
         try {
@@ -120,16 +121,17 @@ public class UserRepository {
         }
     }
 
+
     public Map<String, String> findUserById(String id) {
         return Optional.ofNullable(doQuery(queryConfigurations.getFindById(), null, this::readMap, id))
-                .orElse(Collections.emptyList())
-                .stream().findFirst().orElse(null);
+                       .orElse(Collections.emptyList())
+                       .stream().findFirst().orElse(null);
     }
 
     public Optional<Map<String, String>> findUserByUsername(String username) {
         return Optional.ofNullable(doQuery(queryConfigurations.getFindByUsername(), null, this::readMap, username))
-                .orElse(Collections.emptyList())
-                .stream().findFirst();
+                       .orElse(Collections.emptyList())
+                       .stream().findFirst();
     }
 
     public List<Map<String, String>> findUsers(String search, PagingUtil.Pageable pageable) {
@@ -155,6 +157,6 @@ public class UserRepository {
     }
 
     public boolean removeUser() {
-      return queryConfigurations.getAllowKeycloakDelete();
-  }
+        return queryConfigurations.getAllowKeycloakDelete();
+    }
 }

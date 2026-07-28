@@ -61,7 +61,7 @@ public class DataSourceProvider implements Closeable {
     public void close() {
         executor.shutdownNow();
         if (hikariDataSource != null) {
-          hikariDataSource.close();
+            hikariDataSource.close();
         }
     }
 }
