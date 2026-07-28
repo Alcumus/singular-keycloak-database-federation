@@ -76,22 +76,22 @@ public class DBUserStorageProvider implements UserStorageProvider,
             return false;
         }
 
-                UserCredentialModel cred = (UserCredentialModel) input;
+        UserCredentialModel cred = (UserCredentialModel) input;
 
         UserModel dbUser = user;
         // If the cache just got loaded in the last 500 millisec (i.e. probably part of the actual flow), there is no point in reloading the user.)
         if (allowDatabaseToOverwriteKeycloak && user instanceof CachedUserModel && (System.currentTimeMillis() - ((CachedUserModel) user).getCacheTimestamp()) > 500) {
-          dbUser = this.getUserById(user.getId(), realm);
+            dbUser = this.getUserById(user.getId(), realm);
 
-                    if (dbUser == null) {
-                        ((CachedUserModel) user).invalidate();
-                        return false;
-                    }
+            if (dbUser == null) {
+                ((CachedUserModel) user).invalidate();
+                return false;
+            }
 
-          // For now, we'll just invalidate the cache if username or email has changed. Eventually we could check all (or a parametered list of) attributes fetched from the DB.
-          if (!java.util.Objects.equals(user.getUsername(), dbUser.getUsername()) || !java.util.Objects.equals(user.getEmail(), dbUser.getEmail())) {
-            ((CachedUserModel) user).invalidate();
-          }
+            // For now, we'll just invalidate the cache if username or email has changed. Eventually we could check all (or a parametered list of) attributes fetched from the DB.
+            if (!java.util.Objects.equals(user.getUsername(), dbUser.getUsername()) || !java.util.Objects.equals(user.getEmail(), dbUser.getEmail())) {
+                ((CachedUserModel) user).invalidate();
+            }
         }
         return repository.validateCredentials(dbUser.getUsername(), cred.getChallengeResponse());
     }
@@ -182,7 +182,6 @@ public class DBUserStorageProvider implements UserStorageProvider,
     @Override
     public int getUsersCount(RealmModel realm, Set<String> groupIds) {
         return repository.getUsersCount(null);
-    }
     }
 
     public int getUsersCount(RealmModel realm, String search) {
