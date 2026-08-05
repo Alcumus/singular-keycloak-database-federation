@@ -3,6 +3,7 @@ package org.opensingular.dbuserprovider;
 import org.junit.Assert;
 import org.junit.Test;
 import org.keycloak.component.ComponentModel;
+import org.keycloak.component.ComponentValidationException;
 import org.opensingular.dbuserprovider.model.QueryConfigurations;
 import org.opensingular.dbuserprovider.persistence.DataSourceProvider;
 import org.opensingular.dbuserprovider.persistence.RDBMS;
@@ -76,6 +77,40 @@ public class DBUserStorageProviderFactoryTest {
 
         factory.close();
         Assert.assertEquals(2, factory.closedProviderConfigs.get());
+    }
+
+    @Test
+    public void validateConfigurationShouldRejectMissingRdbmsWithMessage() {
+        DBUserStorageProviderFactory factory = new DBUserStorageProviderFactory();
+        ComponentModel model = new ComponentModel();
+        model.setId("component-1");
+        model.setName("Test Provider");
+
+        try {
+            factory.validateConfiguration(null, null, model);
+            Assert.fail("Expected configuration validation to fail");
+        } catch (ComponentValidationException e) {
+            Assert.assertEquals("Unsupported RDBMS: null", e.getMessage());
+        }
+    }
+
+    @Test
+    public void validateConfigurationShouldProvideMessageWhenCauseHasNone() {
+        DBUserStorageProviderFactory factory = new DBUserStorageProviderFactory() {
+            @Override
+            protected ProviderConfig configure(ComponentModel model) {
+                throw new NullPointerException();
+            }
+        };
+        ComponentModel model = new ComponentModel();
+        model.setId("component-1");
+
+        try {
+            factory.validateConfiguration(null, null, model);
+            Assert.fail("Expected configuration validation to fail");
+        } catch (ComponentValidationException e) {
+            Assert.assertEquals("Failed to validate database user storage configuration: NullPointerException", e.getMessage());
+        }
     }
 
     private static final class TestFactory extends DBUserStorageProviderFactory {

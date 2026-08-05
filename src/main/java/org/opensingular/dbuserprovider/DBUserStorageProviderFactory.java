@@ -75,6 +75,9 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
             String password = model.get("password");
             String url = model.get("url");
             RDBMS rdbms = RDBMS.getByDescription(model.get("rdbms"));
+            if (rdbms == null) {
+                throw new IllegalArgumentException("Unsupported RDBMS: " + model.get("rdbms"));
+            }
             dataSourceProvider.configure(url, rdbms, user, password, model.getName());
             QueryConfigurations queryConfigurations = new QueryConfigurations(
                     model.get("count"),
@@ -103,7 +106,11 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
                 old.retire();
             }
         } catch (Exception e) {
-            throw new ComponentValidationException(e.getMessage(), e);
+            String message = e.getMessage();
+            if (message == null || message.trim().isEmpty()) {
+                message = "Failed to validate database user storage configuration: " + e.getClass().getSimpleName();
+            }
+            throw new ComponentValidationException(message, e);
         }
     }
     
