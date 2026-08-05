@@ -101,7 +101,12 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
     @Override
     public void validateConfiguration(KeycloakSession session, RealmModel realm, ComponentModel model) throws ComponentValidationException {
         try {
-            ProviderConfig old = providerConfigPerInstance.put(model.getId(), configure(model));
+            ProviderConfig providerConfig = configure(model);
+            if (model.getId() == null) {
+                providerConfig.retire();
+                return;
+            }
+            ProviderConfig old = providerConfigPerInstance.put(model.getId(), providerConfig);
             if (old != null) {
                 old.retire();
             }

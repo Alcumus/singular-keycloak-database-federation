@@ -80,6 +80,21 @@ public class DBUserStorageProviderFactoryTest {
     }
 
     @Test
+    public void validateConfigurationShouldCloseTransientConfigWhenModelHasNoId() {
+        TestFactory factory = new TestFactory();
+        ComponentModel model = new ComponentModel();
+        model.setName("Test Provider");
+
+        factory.validateConfiguration(null, null, model);
+
+        Assert.assertEquals(1, factory.configureCalls.get());
+        Assert.assertEquals(1, factory.closedProviderConfigs.get());
+
+        factory.close();
+        Assert.assertEquals(1, factory.closedProviderConfigs.get());
+    }
+
+    @Test
     public void validateConfigurationShouldRejectMissingRdbmsWithMessage() {
         DBUserStorageProviderFactory factory = new DBUserStorageProviderFactory();
         ComponentModel model = new ComponentModel();
