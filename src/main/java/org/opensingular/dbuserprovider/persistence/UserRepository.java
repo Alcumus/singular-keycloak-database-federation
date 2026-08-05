@@ -21,19 +21,20 @@ import java.util.*;
 import java.util.function.Function;
 
 
+
 @JBossLog
 public class UserRepository {
-    
-    
+
+
     private DataSourceProvider  dataSourceProvider;
     private QueryConfigurations queryConfigurations;
-    
+
     public UserRepository(DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations) {
         this.dataSourceProvider  = dataSourceProvider;
         this.queryConfigurations = queryConfigurations;
     }
-    
-    
+
+
     private <T> T doQuery(String query, Pageable pageable, Function<ResultSet, T> resultTransformer, Object... params) {
         Optional<DataSource> dataSourceOpt = dataSourceProvider.getDataSource();
         if (dataSourceOpt.isPresent()) {
@@ -60,7 +61,7 @@ public class UserRepository {
         }
         return null;
     }
-    
+
     private List<Map<String, String>> readMap(ResultSet rs) {
         try {
             List<Map<String, String>> data         = new ArrayList<>();
@@ -81,8 +82,8 @@ public class UserRepository {
             throw new DBUserStorageException(e.getMessage(), e);
         }
     }
-    
-    
+
+
     private Integer readInt(ResultSet rs) {
         try {
             return rs.next() ? rs.getInt(1) : null;
@@ -90,7 +91,7 @@ public class UserRepository {
             throw new DBUserStorageException(e.getMessage(), e);
         }
     }
-    
+
     private Boolean readBoolean(ResultSet rs) {
         try {
             return rs.next() ? rs.getBoolean(1) : null;
@@ -98,7 +99,7 @@ public class UserRepository {
             throw new DBUserStorageException(e.getMessage(), e);
         }
     }
-    
+
     private String readString(ResultSet rs) {
         try {
             return rs.next() ? rs.getString(1) : null;
@@ -106,11 +107,11 @@ public class UserRepository {
             throw new DBUserStorageException(e.getMessage(), e);
         }
     }
-    
+
     public List<Map<String, String>> getAllUsers() {
         return doQuery(queryConfigurations.getListAll(), null, this::readMap);
     }
-    
+
     public int getUsersCount(String search) {
         if (search == null || search.isEmpty()) {
             return Optional.ofNullable(doQuery(queryConfigurations.getCount(), null, this::readInt)).orElse(0);
@@ -119,27 +120,27 @@ public class UserRepository {
             return Optional.ofNullable(doQuery(query, null, this::readInt, search)).orElse(0);
         }
     }
-    
-    
+
+
     public Map<String, String> findUserById(String id) {
         return Optional.ofNullable(doQuery(queryConfigurations.getFindById(), null, this::readMap, id))
                        .orElse(Collections.emptyList())
                        .stream().findFirst().orElse(null);
     }
-    
+
     public Optional<Map<String, String>> findUserByUsername(String username) {
         return Optional.ofNullable(doQuery(queryConfigurations.getFindByUsername(), null, this::readMap, username))
                        .orElse(Collections.emptyList())
                        .stream().findFirst();
     }
-    
+
     public List<Map<String, String>> findUsers(String search, PagingUtil.Pageable pageable) {
         if (search == null || search.isEmpty()) {
             return doQuery(queryConfigurations.getListAll(), pageable, this::readMap);
         }
         return doQuery(queryConfigurations.getFindBySearchTerm(), pageable, this::readMap, search);
     }
-    
+
     public boolean validateCredentials(String username, String password) {
         String hash = Optional.ofNullable(doQuery(queryConfigurations.getFindPasswordHash(), null, this::readString, username)).orElse("");
         if (queryConfigurations.isBlowfish()) {
@@ -150,11 +151,11 @@ public class UserRepository {
             return Objects.equals(Hex.encodeHexString(digest.digest(pwdBytes)), hash);
         }
     }
-    
+
     public boolean updateCredentials(String username, String password) {
         throw new NotImplementedException("Password update not supported");
     }
-    
+
     public boolean removeUser() {
         return queryConfigurations.getAllowKeycloakDelete();
     }

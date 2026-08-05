@@ -16,20 +16,20 @@ import java.util.concurrent.Executors;
 
 @JBossLog
 public class DataSourceProvider implements Closeable {
-    
+
     private static final SimpleDateFormat SIMPLE_DATE_FORMAT = new SimpleDateFormat("dd-MM-YYYY HH:mm:ss");
     private              ExecutorService  executor           = Executors.newFixedThreadPool(1);
     private              HikariDataSource hikariDataSource;
-    
+
     public DataSourceProvider() {
     }
-    
-    
+
+
     synchronized Optional<DataSource> getDataSource() {
         return Optional.ofNullable(hikariDataSource);
     }
-    
-    
+
+
     public void configure(String url, RDBMS rdbms, String user, String pass, String name) {
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setUsername(user);
@@ -44,7 +44,7 @@ public class DataSourceProvider implements Closeable {
         this.hikariDataSource = newDS;
         disposeOldDataSource(old);
     }
-    
+
     private void disposeOldDataSource(HikariDataSource old) {
         executor.submit(() -> {
             try {
@@ -56,7 +56,7 @@ public class DataSourceProvider implements Closeable {
             }
         });
     }
-    
+
     @Override
     public void close() {
         executor.shutdownNow();
