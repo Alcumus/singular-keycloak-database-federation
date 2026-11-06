@@ -14,7 +14,13 @@ import org.opensingular.dbuserprovider.model.QueryConfigurations;
 import org.opensingular.dbuserprovider.persistence.DataSourceProvider;
 import org.opensingular.dbuserprovider.persistence.RDBMS;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -30,6 +36,15 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
                                                              "            \"firstName\" (optional)," +
                                                              "            \"lastName\" (optional). Any other parameter can be mapped by aliases to a realm scope";
     private static final String PARAMETER_HELP             = " The %s is passed as query parameter.";
+
+    /**
+     * Every ComponentModel property that changes runtime provider behavior. Used to build the
+     * configuration fingerprint that lets each node detect config changes made on other nodes.
+     */
+    private static final List<String> FINGERPRINT_CONFIG_KEYS = Collections.unmodifiableList(Arrays.asList(
+            "url", "user", "password", "rdbms",
+            "count", "listAll", "findById", "findByUsername", "findBySearchTerm", "findPasswordHash", "hashFunction",
+            "allowKeycloakDelete", "allowDatabaseToOverwriteKeycloak"));
     
     
     private final ConcurrentMap<String, ProviderConfig> providerConfigPerInstance = new ConcurrentHashMap<>();
@@ -59,11 +74,45 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
     }
     
     private ProviderConfig acquireProviderConfig(ComponentModel model) {
+        String fingerprint = configFingerprint(model);
         while (true) {
-            ProviderConfig providerConfig = providerConfigPerInstance.computeIfAbsent(model.getId(), s -> configure(model));
+            ProviderConfig providerConfig = providerConfigPerInstance.compute(model.getId(), (id, existing) -> {
+                if (existing != null && existing.matchesFingerprint(fingerprint)) {
+                    return existing;
+                }
+                // Build the replacement first: if configuration fails, the current mapping stays intact.
+                ProviderConfig replacement = configure(model);
+                if (existing != null) {
+                    log.infov("Configuration changed for component: id={0} name={1}; retiring previous configuration", model.getId(), model.getName());
+                    existing.retire();
+                }
+                return replacement;
+            });
             if (providerConfig.tryRetain()) {
                 return providerConfig;
             }
+        }
+    }
+
+    /**
+     * SHA-256 digest of all behavior-relevant component configuration values. Values (including the
+     * database password) are only ever hashed; the plaintext is never stored, logged or exposed.
+     */
+    protected static String configFingerprint(ComponentModel model) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (String key : FINGERPRINT_CONFIG_KEYS) {
+                digest.update(key.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                String value = model.get(key);
+                if (value != null) {
+                    digest.update(value.getBytes(StandardCharsets.UTF_8));
+                }
+                digest.update((byte) 0);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
         }
     }
 
@@ -88,7 +137,7 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
                     model.get("allowKeycloakDelete", false),
                     model.get("allowDatabaseToOverwriteKeycloak", false)
             );
-            return new ProviderConfig(dataSourceProvider, queryConfigurations);
+            return new ProviderConfig(dataSourceProvider, queryConfigurations, configFingerprint(model));
         } catch (RuntimeException e) {
             dataSourceProvider.close();
             throw e;
@@ -97,13 +146,17 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
     
     @Override
     public void validateConfiguration(KeycloakSession session, RealmModel realm, ComponentModel model) throws ComponentValidationException {
+        // Validate with a throwaway configuration: the live map and HikariCP pool are only replaced
+        // lazily by acquireProviderConfig() once a saved ComponentModel with a new fingerprint arrives.
+        ProviderConfig validationConfig = null;
         try {
-            ProviderConfig old = providerConfigPerInstance.put(model.getId(), configure(model));
-            if (old != null) {
-                old.retire();
-            }
+            validationConfig = configure(model);
         } catch (Exception e) {
             throw new ComponentValidationException(e.getMessage(), e);
+        } finally {
+            if (validationConfig != null) {
+                validationConfig.retire();
+            }
         }
     }
     
@@ -248,13 +301,20 @@ public class DBUserStorageProviderFactory implements UserStorageProviderFactory<
     protected static class ProviderConfig {
         private final DataSourceProvider  dataSourceProvider;
         private final QueryConfigurations queryConfigurations;
+        private final String              configFingerprint;
         private       boolean             retired;
         private       boolean             closed;
         private       int                 activeInstances;
 
-        ProviderConfig(DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations) {
+        ProviderConfig(DataSourceProvider dataSourceProvider, QueryConfigurations queryConfigurations, String configFingerprint) {
+
             this.dataSourceProvider = dataSourceProvider;
             this.queryConfigurations = queryConfigurations;
+            this.configFingerprint = configFingerprint;
+        }
+
+        boolean matchesFingerprint(String fingerprint) {
+            return configFingerprint.equals(fingerprint);
         }
 
         private synchronized boolean tryRetain() {
